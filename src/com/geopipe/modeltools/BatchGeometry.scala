@@ -50,22 +50,14 @@ class ReplaceEffectIdRewriter(replacements:Map[String, String]) extends RewriteR
 	
 	
 	override def transform(n: Node): Seq[Node] = {
-		val ret = n match {
-			case updateEffect(_,e) => e//.copy(child = e.child.map(this))
-			case updateNewParam(_,e) => e//.copy(child = e.child.map(this))
+		n match {
+			case updateEffect(_,e) => e
+			case updateNewParam(_,e) => e
 			case updateTexture(_,e) => e
 			case updateSource(_,e) => e
 			case e:Elem => e
 			case _ => n
 		}
-		/*
-		if(ret == n){
-			Console.println(s"\t\tDidn't update: \n$n")
-		} else {
-			Console.println(s"\t\tReplacing: \n$n with \n$ret")
-		}
-		*/
-		ret
 	}
 	
 }
@@ -80,25 +72,11 @@ class UniqueEffectsRewriter(collada:Node) extends RewriteRule {
 				val tryReplaceWith = Map(effectId -> testId)
 				val replacer = new RuleTransformer(new ReplaceEffectIdRewriter(tryReplaceWith))
 				val replacement = replacer(nodeHere)
-				Console.println(s"\tComparing <${replacement.label} ${replacement.attributes}> (new) vs <${testNode.label} ${testNode.attributes}> (old)") 
-				//Console.println(s"\t$replacement\n\t$testNode") 
 				Utility.trim(testNode) xml_== Utility.trim(replacement) 
-			} match {
-				case Some((replaceId, _)) => 
-					Console.println(s"\tWe'll replace it with $replaceId")
-					(uniqueEffects, replaceWith + (effectId -> replaceId)) 
-				case None =>
-					Console.println("\tIt's super unique, we'll keep it")
-					(uniqueEffects + ((effectId, nodeHere)), replaceWith)
-					
+			}.fold( (uniqueEffects + ((effectId, nodeHere)), replaceWith) ){
+				case (replaceId, _) => (uniqueEffects, replaceWith + (effectId -> replaceId)) 	
 			}
 	}
-	
-	/*
-	val material_instance_effects =  collada \ "library_materials" \ "material" \ "instance_effect"
-	val updateInstanceEffect = new ElemNeedsUpdate("instance_effect",Map(),new MetaDataNeedsUpdate(Set("url"),replaceWith))
-	val instanceEffectUpdates = material_instance_effects.collect{	case updateInstanceEffect(ie, update) => (ie -> update)	}.toMap
-	*/
 	
 	val materials = collada \ "library_materials" \ "material"
 	val (updatedMaterials, materialReplacements) = materials.foldLeft((Set[(String,Elem)](), Map[String,String]())){
@@ -146,17 +124,6 @@ object BatchGeometry {
 		val collada = XML.loadFile(args(0))
 		val withUniqueImages = makeImagesUnique(collada)
 		val withUniqueEffects = makeEffectsUnique(withUniqueImages)
-		
-		Console.println(collada \\ "library_images")
-		Console.println(collada \\ "library_effects")
-		Console.println()
-		Console.println(withUniqueImages \\ "library_images")
-		Console.println(withUniqueImages \\ "library_effects")
-		Console.println(withUniqueEffects \\ "library_materials")
-		Console.println()
-		Console.println(withUniqueEffects \\ "library_effects")
-		Console.println(withUniqueEffects \\ "library_materials")
-		Console.println((withUniqueEffects \\ "triangles").collect{case t:Elem => s"<triangles ${t.attributes}"})
-		
+		Console.println(collada)
 	}
 }

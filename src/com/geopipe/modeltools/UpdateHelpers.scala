@@ -4,44 +4,52 @@ import scala.xml._
 import scala.xml.transform._
 import scala.language.implicitConversions
 
+object MiscHelpers {
+	implicit class OptionableBoolean(b:Boolean) {
+		def toOption[A](condV: =>A):Option[A] = {
+			if(b) Some(condV) else None
+		}
+		
+		def withOption[A](condV: => Option[A]):Option[A] = {
+			if(b) condV else None
+		}
+	}
+}
+
 object MetaDataHelpers {
 	import scala.collection.{LinearSeq, LinearSeqOptimized}
 	import scala.collection.mutable.{Builder, ListBuffer}
 
 	class MetaDataEnhanced(val metadata:MetaData) extends Iterable[MetaDataEnhanced] {
 		override def iterator = metadata.iterator.map(enhanceMetaData(_))
-
-				val maybePre:Option[String] = metadata match {
-				case a:Attribute => Option(a.pre)
-				case Null => None
+		val maybePre:Option[String] = metadata match {
+			case a:Attribute => Option(a.pre)
+			case Null => None
 		}
 
 		def key = metadata.key
-				def value = metadata.value
+		def value = metadata.value
 
-				def copyEnhanced(maybePre:Option[String] = this.maybePre, key:String = this.key, value:Either[String,Seq[Node]] = Right(this.value)):MetaDataEnhanced = {
-			metadata match {
+		def copyEnhanced(maybePre:Option[String] = this.maybePre, key:String = this.key, value:Either[String,Seq[Node]] = Right(this.value)):MetaDataEnhanced = metadata match {
 			case Null => throw new IllegalStateException("Can't copy Null metadata with new pre:key=value")
 			case _ => Attribute(maybePre, key, value.left.map(Text(_).theSeq).merge, metadata.next)
-			}
 		}
 	}
 
 	implicit def enhanceMetaData(md:MetaData): MetaDataEnhanced = new MetaDataEnhanced(md)
-	implicit def iterableToMetaData(items: Iterable[MetaData]): MetaData = {
-		items match {
+	implicit def iterableToMetaData(items: Iterable[MetaData]): MetaData = items match {
 		case Nil => Null
 		case head :: tail => head.copy(next=iterableToMetaData(tail))
-		}
 	}
 }
 
 object ReplacementHelpers {
+	import MiscHelpers._
 	def replaceAll(initText:String, replacements:Map[String,String]):Option[String] = {
 			val newText = replacements.toSeq.sortBy( - _._1.length).foldLeft(initText){
 				(srcText,kvPair) => srcText.replace(kvPair._1, kvPair._2)
 			}
-			if(newText == initText){ None } else { Some(newText) }
+			(newText != initText).toOption(newText)
 	}
 
 	def mapWhereDefined(children:Seq[Node],f:Node => Option[Node]):Seq[Node] = {
@@ -50,71 +58,56 @@ object ReplacementHelpers {
 }
 
 class MetaDataNeedsUpdate(targetAttrs:Function1[String,Boolean], replacements:Map[String, String]) {
+	import MiscHelpers._
 	def unapply(oldMetaData:MetaData):Option[MetaData] = {
 		import MetaDataHelpers.{enhanceMetaData, iterableToMetaData}
 		val (hasUpdatedMetaData, newMetaData) = oldMetaData.foldLeft((false,List[MetaData]())){
 			case ((needsUpdate, metaSoFar), metaHere)=> 
-				((needsUpdate, targetAttrs(metaHere.key)) match {
-					case (_, true) =>
+				targetAttrs(metaHere.key).withOption {
 						val oldText = metaHere.value.text
 						val maybeNewText = ReplacementHelpers.replaceAll(oldText, replacements)
-						maybeNewText.map{
-							newText => (true, metaSoFar :+ metaHere.copyEnhanced(value=Left(newText)).metadata)
-						}
-							
-					case _ => None
-				}).getOrElse((needsUpdate, metaSoFar :+ metaHere))
+						maybeNewText.map{ newText => (true, metaSoFar :+ metaHere.copyEnhanced(value=Left(newText)).metadata) }		
+				}.getOrElse((needsUpdate, metaSoFar :+ metaHere))
 		}
-		if(hasUpdatedMetaData){
-			//Console.println(s"MD update, $oldMetaData -> ${iterableToMetaData(newMetaData)} in $targetAttrs by way of $replacements")
-			Some(newMetaData)
-		} else {
-			None
-		}
+		hasUpdatedMetaData.toOption(newMetaData)
 	}
 }
 
 class ElemNeedsUpdate(label:String, textReplacements:Map[String, String], newMd:MetaDataNeedsUpdate = new MetaDataNeedsUpdate({s:String => false}, Map())) {
-	def unapply(e:Elem):Option[(Elem,Elem)] = e.label match {
-		case `label` => 
+	import MiscHelpers._
+	def unapply(e:Elem):Option[(Elem,Elem)] = {
+		(e.label == label).withOption {
 			val oldText = e.text
 			val oldAttrs = e.attributes
 			(oldAttrs, ReplacementHelpers.replaceAll(oldText, textReplacements)) match {
-				case (newMd(nAttr), maybeNewText) =>
-					val copied = e.copy(child = maybeNewText.map(newText => Text(newText).theSeq).getOrElse(e.child), attributes = nAttr) 
-					Console.println(s"\t\tMatch! Return new attributes and maybe new text: <${e.label} ${e.attributes}> -> <${copied.label} ${copied.attributes}>")
-					Some(e -> copied)
-				case (_, Some(newText)) => 
-					val copied = e.copy(child = Text(newText).theSeq)
-					Console.println(s"\t\tMatch! Return new text: $e -> $copied")
-					Some(e -> copied)
+				case (newMd(nAttr), maybeNewText) => Some(e -> e.copy(child = maybeNewText.map(newText => Text(newText).theSeq).getOrElse(e.child), attributes = nAttr))
+				case (_, Some(newText)) => Some(e -> e.copy(child = Text(newText).theSeq))
 				case _ => None
 			}
-		case _ => None
+		}
 	}
+			
 }
 
 class SurfaceNeedsUpdate(replacements:Map[String,String]) {
 	def unapply(surface:Elem):Option[(Elem, Elem)] = {
-		(surface \ "init_from").headOption match {
-			case Some(init:Elem) =>							
+		(surface \ "init_from").collectFirst {
+			case init:Elem =>							
 				val oldText = init.text
 				val maybeNewText = replacements.get(oldText)
 				maybeNewText.map(newText => surface -> surface.copy(child = init.copy(child = Text(newText))))
-			case _ => None
-		}
+		}.flatten
 	}
 }
 
 class SamplerNeedsUpdate(replacements:Map[String,String]) {
 	def unapply(sampler:Elem):Option[(Elem, Elem)] = {
-		(sampler \ "source").headOption match {
-			case Some(src:Elem) =>
+		(sampler \ "source").collectFirst {
+			case src:Elem =>
 				val oldText = src.text
 				val maybeNewText = ReplacementHelpers.replaceAll(oldText, replacements)
 				maybeNewText.map(newText => sampler -> sampler.copy(child = src.copy(child = Text(newText))))
-			case _ => None
-		}
+		}.flatten
 	}
 }
 
@@ -128,6 +121,8 @@ class TextureNeedsUpdate(replacements:Map[String,String]) {
 }
 
 class ParamNeedsUpdate(updatedSurfaces:Map[Elem,Elem], updatedSamplers:Map[Elem,Elem], replacements:Map[String,String]) {
+	import MiscHelpers._
+	
 	val metaDataNeedsUpdate = new MetaDataNeedsUpdate(Set("sid"), replacements)
 	def unapply(newParam:Elem):Option[(Elem,Elem)] = {
 		val surfaces = newParam \ "surface"
@@ -138,13 +133,11 @@ class ParamNeedsUpdate(updatedSurfaces:Map[Elem,Elem], updatedSamplers:Map[Elem,
 		val metaData = newParam.attributes
 		val maybeUpdatedMetaData = metaDataNeedsUpdate.unapply(metaData)
 			
-		if(maybeUpdatedMetaData.isDefined || hasUpdatedSurfaces || hasUpdatedSamplers){
-			Some(newParam -> newParam.copy(attributes = maybeUpdatedMetaData.getOrElse(metaData), child = ReplacementHelpers.mapWhereDefined(newParam.child, {
-					case e:Elem => updatedSurfaces.get(e).orElse(updatedSamplers.get(e))
-					case n:Node => None
-			})))
-		} else {
-			None
+		(maybeUpdatedMetaData.isDefined || hasUpdatedSurfaces || hasUpdatedSamplers).toOption{
+			newParam -> newParam.copy(attributes = maybeUpdatedMetaData.getOrElse(metaData), child = ReplacementHelpers.mapWhereDefined(newParam.child, {
+				case e:Elem => updatedSurfaces.get(e).orElse(updatedSamplers.get(e))
+				case n:Node => None
+			}))
 		}
 	}
 }
@@ -155,7 +148,7 @@ class MaterialDuplicatesInstanceEffect(uniques:Set[(String, Elem)], replacements
 			case ie:Elem =>
 				uniques.collectFirst{
 					case (testId, testMat) if
-						(testMat \ "instance_effect").headOption.map{
+						(testMat \ "instance_effect").collectFirst {
 						case testIe:Elem =>
 							val testUrl = (testIe \@ "url") 
 							val urlHere = (ie \@ "url")
@@ -185,8 +178,8 @@ class EffectNeedsUpdate(replacements:Map[String,String]) {
 	val textureNeedsUpdate = new TextureNeedsUpdate(replacements)
 	
 	def unapply(effect:Elem):Option[(Elem, Elem)] = {
-		(effect \ "profile_COMMON").headOption match {
-			case Some(profile:Elem) =>
+		(effect \ "profile_COMMON").collectFirst {
+			case profile:Elem =>
 				val effectProfile = effect \ "profile_COMMON"
 				val newParams = effectProfile \ "newparam"
 				val textures = effectProfile \ "technique" \\ "texture"
@@ -203,12 +196,10 @@ class EffectNeedsUpdate(replacements:Map[String,String]) {
 
 				val updatedNewParams = newParams.collect{ case paramUpdater(newParam, update) => (newParam -> update)}.toMap
 				
-				Some(effect -> effect.copy(child = profile.copy( child = ReplacementHelpers.mapWhereDefined(profile.child, {
+				(effect -> effect.copy(child = profile.copy( child = ReplacementHelpers.mapWhereDefined(profile.child, {
 					case e:Elem => updatedNewParams.get(e).orElse(updatedTechniques.get(e))
 					case n:Node => None
 				}))))
-			case _ => None
-			
 		}
 	}
 }
