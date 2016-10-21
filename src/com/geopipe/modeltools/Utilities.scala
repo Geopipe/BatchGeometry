@@ -15,6 +15,10 @@ object MiscHelpers {
 			if(b) condV else None
 		}
 	}
+	
+	def retrieveSceneNodes(collada:Node):Seq[Node] = {
+		collada \ "library_visual_scenes" \ "visual_scene" \ "node"
+	}
 }
 
 object MetaDataHelpers {

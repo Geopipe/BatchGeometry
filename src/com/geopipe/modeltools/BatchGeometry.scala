@@ -18,6 +18,6 @@ object BatchGeometry {
 		val collada = XML.loadFile(args(0))
 		val withUniqueImages = makeImagesUnique(collada)
 		val withUniqueEffects = makeEffectsUnique(withUniqueImages)
-		Console.println(collada)
+		Console.println(withUniqueEffects)
 	}
 }
