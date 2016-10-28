@@ -8,8 +8,8 @@ import org.json4s._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
-import java.io.FileWriter
-import org.apache.commons.io.FilenameUtils
+import java.io.File
+import org.apache.commons.io.{FileUtils,FilenameUtils}
 
 
 object BatchGeometry extends TransformerPipeline(List(new UniqueImagesRewriter(_), new UniqueEffectsRewriter(_), new BatchedGeometryRewriter(_))) {
@@ -24,7 +24,7 @@ object BatchGeometry extends TransformerPipeline(List(new UniqueImagesRewriter(_
 				val jsonDst = outputBasePath + jsonSuffix
 				
 				XML.save(outputDst, outputXML, enc="utf-8", xmlDecl = true)
-				native.Serialization.write(outputJSON, new FileWriter(jsonDst))(native.Serialization.formats(NoTypeHints))
+				FileUtils.writeStringToFile(new File(jsonDst), native.Serialization.write(outputJSON)(native.Serialization.formats(NoTypeHints)), "utf-8")
 		}
 	}
 	
