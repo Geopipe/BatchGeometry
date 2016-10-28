@@ -2,6 +2,7 @@ package com.geopipe.modeltools
 
 import scala.xml._
 import scala.xml.transform._
+import org.apache.spark._
 
 object BatchGeometry {
 	def makeImagesUnique(collada:Node):Node = {
@@ -15,9 +16,15 @@ object BatchGeometry {
 	}
 	
 	def main(args:Array[String]):Unit = {
-		val collada = XML.loadFile(args(0))
-		val withUniqueImages = makeImagesUnique(collada)
-		val withUniqueEffects = makeEffectsUnique(withUniqueImages)
-		Console.println(withUniqueEffects)
+		val sc = SparkContext.getOrCreate
+		val dirPattern = args(0)
+		val filesToProcess = sc.wholeTextFiles(dirPattern)
+		filesToProcess.foreach{
+			case (path, content) => 
+				val collada = XML.loadString(content)
+				val withUniqueImages = makeImagesUnique(collada)
+				val withUniqueEffects = makeEffectsUnique(withUniqueImages)
+				Console.println(withUniqueEffects)
+		}
 	}
 }
