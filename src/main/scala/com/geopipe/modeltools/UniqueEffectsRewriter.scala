@@ -3,7 +3,7 @@ package com.geopipe.modeltools
 import scala.xml._
 import scala.xml.transform._
 
-class UniqueEffectsRewriter(collada:Node) extends RewriteRule {
+class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	
 	class ReplaceEffectIdRewriter(replacements:Map[String, String]) extends RewriteRule {
 		val updateEffect = new ElemNeedsUpdate("effect",Map(),new MetaDataNeedsUpdate(Set("name","id"), replacements))
@@ -59,6 +59,8 @@ class UniqueEffectsRewriter(collada:Node) extends RewriteRule {
 	val instanceMaterialNeedsUpdate = new ElemNeedsUpdate("instance_material",Map(),new MetaDataNeedsUpdate(Set("symbol","target"),materialReplacements))
 	val updatedInstanceMaterials = instanceMaterialNeedsUpdate.collectUpdates(instanceMaterials)
 	
+	
+	override def sideChannel() = Map()
 	override def transform(n: Node): Seq[Node] = n match {
 		case e:Elem =>
 			e.label match {

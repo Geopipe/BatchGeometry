@@ -3,7 +3,7 @@ package com.geopipe.modeltools
 import scala.xml._
 import scala.xml.transform._
 
-class UniqueImagesRewriter(collada:Node) extends RewriteRule {
+class UniqueImagesRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	val images = collada \ "library_images" \ "image"
 	val (uniqueTextures, replaceWith) = images.foldLeft((Map[String,(String,Node)](),Map[String,String]())){
 		case ((uniqueTextures, replaceWith), nodeHere) =>
@@ -17,6 +17,8 @@ class UniqueImagesRewriter(collada:Node) extends RewriteRule {
 	val effects = collada \ "library_effects" \ "effect"
 	val effectNeedsUpdate = new EffectNeedsUpdate(replaceWith)
 	val updatedEffects = effectNeedsUpdate.collectUpdates(effects)
+	
+	override def sideChannel() = Map()
 		
 	override def transform(n: Node): Seq[Node] = { 
 		n match {

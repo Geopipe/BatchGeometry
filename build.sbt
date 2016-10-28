@@ -12,6 +12,7 @@ lazy val root = (project in hereDir).
 		scalaVersion := "2.11.8",
 		libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "1.0.6",
 		libraryDependencies += "org.apache.spark" %% "spark-core" % "2.0.1",
+		libraryDependencies += "org.json4s" %% "json4s-native" % "3.4.2",
 		mainClass in assembly := Some("com.geopipe.modeltools.BatchGeometry"),
 		assemblyOption in assembly := (assemblyOption in assembly).value.copy(prependShellScript = Some(sparkShellScript))
 	)
