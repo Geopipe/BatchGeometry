@@ -16,7 +16,7 @@ class UniqueImagesRewriter(collada:Node) extends RewriteRule {
 	
 	val effects = collada \ "library_effects" \ "effect"
 	val effectNeedsUpdate = new EffectNeedsUpdate(replaceWith)
-	val updatedEffects = effects.collect{ case effectNeedsUpdate(effect, update) => (effect -> update) }.toMap
+	val updatedEffects = effectNeedsUpdate.collectUpdates(effects)
 		
 	override def transform(n: Node): Seq[Node] = { 
 		n match {

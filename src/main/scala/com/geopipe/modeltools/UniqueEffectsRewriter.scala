@@ -52,16 +52,12 @@ class UniqueEffectsRewriter(collada:Node) extends RewriteRule {
 	
 	val triangles = collada \ "library_geometries" \ "geometry" \ "mesh" \ "triangles"
 	val triangleNeedsUpdate = new ElemNeedsUpdate("triangles",Map(),new MetaDataNeedsUpdate(Set("material"),materialReplacements))
-	val updatedTriangles = triangles.collect {
-		case triangleNeedsUpdate(triangle, update) =>  (triangle -> update)
-	}.toMap
+	val updatedTriangles = triangleNeedsUpdate.collectUpdates(triangles)
 	
 	
 	val instanceMaterials = MiscHelpers.retrieveSceneNodes(collada) \ "instance_geometry" \ "bind_material" \\ "instance_material"
 	val instanceMaterialNeedsUpdate = new ElemNeedsUpdate("instance_material",Map(),new MetaDataNeedsUpdate(Set("symbol","target"),materialReplacements))
-	val updatedInstanceMaterials = instanceMaterials.collect{
-		case instanceMaterialNeedsUpdate(iM, u) => (iM -> u)
-	}.toMap
+	val updatedInstanceMaterials = instanceMaterialNeedsUpdate.collectUpdates(instanceMaterials)
 	
 	override def transform(n: Node): Seq[Node] = n match {
 		case e:Elem =>
