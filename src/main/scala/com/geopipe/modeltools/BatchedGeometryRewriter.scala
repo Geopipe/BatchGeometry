@@ -86,21 +86,21 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 			val xmlOut = <geometry id={geomId}>
 				<mesh>
 					{attributes.map{ _._2._2 }}
+					<vertices id={vertsId}>
+						<input source={s"#${attributes("POSITION")._1}"} semantic="POSITION" />
+					</vertices>
+					<triangles material={matUrl.tail} count={vertCount.toString}>
+						{attributes.zipWithIndex.map{
+							case ((sem,(id,_)),i) =>
+								val (tId, tSem) = sem match {
+									case "POSITION" => (vertsId, "VERTEX")
+									case _ => (id, sem)
+								}
+								<input offset={i.toString} source={s"#$tId"} semantic={tSem}/>
+						}}
+						<p>{indices.mkString(" ")}</p>
+					</triangles>
 				</mesh>
-				<vertices id={vertsId}>
-					<input source={s"#${attributes("POSITION")._1}"} semantic="POSITION" />
-				</vertices>
-				<triangles material={matUrl.tail} count={vertCount.toString}>
-					{attributes.zipWithIndex.map{
-						case ((sem,(id,_)),i) =>
-							val (tId, tSem) = sem match {
-								case "POSITION" => (vertsId, "VERTEX")
-								case _ => (id, sem)
-							}
-							<input offset={i.toString} source={s"#$tId"} semantic={tSem}/>
-					}}
-					<p>{indices.mkString(" ")}</p>
-				</triangles>
 			</geometry>	
 			(matUrl -> (attributes.contains("TEXCOORD"),xmlOut))
 	}
