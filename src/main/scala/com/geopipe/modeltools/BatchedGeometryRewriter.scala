@@ -47,7 +47,9 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 							val nPVerts = pHere.length / 3
 							val nTVerts = tCHere.length / 2
 							assert((nPVerts == nTVerts) || (nTVerts == 0))
-							(batchIDs ++ List.fill(nPVerts)(batchId.toFloat), positions ++ pHere, texCoords ++ tCHere, indices ++ iHere.map{_ + nPVerts})
+							
+							val prevNVerts = positions.length / 3
+							(batchIDs ++ List.fill(nPVerts)(batchId.toFloat), positions ++ pHere, texCoords ++ tCHere, indices ++ iHere.map{_ + prevNVerts})
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
 			})
