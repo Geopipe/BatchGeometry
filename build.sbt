@@ -2,8 +2,6 @@ import sbtassembly.AssemblyPlugin.defaultShellScript
 
 lazy val hereDir:File = file(".")
 
-lazy val sparkShellScript = Seq("#!/usr/bin/env sh","nthreads=$1","shift", """exec java -Dspark.master=local[$nthreads] -Dspark.app.name=BatchGeometry -jar "$0" "$@"""")
-
 lazy val root = (project in hereDir).
 	settings(
 		name := "BatchGeometry",
@@ -13,8 +11,8 @@ lazy val root = (project in hereDir).
 		libraryDependencies ++= Seq(	"org.scala-lang.modules" %% "scala-xml" % "1.0.6",
 						"org.apache.spark" %% "spark-core" % "2.0.1" % "provided",
 						"org.json4s" %% "json4s-native" % "3.4.2"),
-		mainClass in assembly := Some("com.geopipe.modeltools.BatchGeometry"),
-		assemblyOption in assembly := (assemblyOption in assembly).value.copy(prependShellScript = Some(sparkShellScript))
+		mainClass in assembly := Some("com.geopipe.modeltools.BatchGeometrySingle"),
+		assemblyOption in assembly := (assemblyOption in assembly).value.copy(prependShellScript = Some(defaultShellScript))
 	)
 
 EclipseKeys.withSource := true
