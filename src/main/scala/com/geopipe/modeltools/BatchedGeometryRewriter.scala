@@ -132,7 +132,10 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	
 	private def joinId(components:String*):String = components.mkString("-")
 	private def genArrayOfType(contents:Seq[_ <: AnyVal], strideNames:Seq[String], parentId:String, semantic:String, vType:String):(String,Elem) = {
-		val littleS = semantic.toLowerCase
+		val littleS = semantic.toLowerCase match {
+			case "vertex" => "position"
+			case s@_ => s
+		}
 		val id = joinId(parentId, littleS)
 		val arrayId = joinId(id, "array")
 		val strideLen = strideNames.length
