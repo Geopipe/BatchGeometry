@@ -5,6 +5,8 @@ import scala.xml._
 import scala.xml.transform._
 import scala.language.implicitConversions
 
+
+
 object MiscHelpers {
 	implicit class OptionableBoolean(b:Boolean) {
 		def toOption[A](condV: =>A):Option[A] = {
@@ -19,6 +21,13 @@ object MiscHelpers {
 	def retrieveSceneNodes(collada:Node):Seq[Node] = {
 		collada \ "library_visual_scenes" \ "visual_scene" \ "node"
 	}
+	
+	def toIdDict(ns:NodeSeq) = ns.collect{case e:Elem => (e \@ "id" -> e)}.toMap
+	
+	object FragURL {
+		def unapply(s:String):Option[String] = (s(0) == '#').toOption(s.tail)
+	}
+	
 }
 
 object MetaDataHelpers {

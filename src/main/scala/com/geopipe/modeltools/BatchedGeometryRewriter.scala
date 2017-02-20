@@ -6,10 +6,11 @@ import scala.xml.transform._
 import org.json4s._
 
 class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
+	import MiscHelpers.{toIdDict, FragURL}
+	
+	
 	private val indexedSceneNodes = MiscHelpers.retrieveSceneNodes(collada).zipWithIndex
-	private val geometryById = (collada \ "library_geometries" \ "geometry").map{
-		case e:Elem => (e\@"id" -> e)
-	}.toMap
+	private val geometryById = toIdDict(collada \ "library_geometries" \ "geometry")
 	private val metaData = JObject(indexedSceneNodes.map{
 		case (node, i) => 
 			val metaDataRoot = node \ "extra" \ "technique"
@@ -27,47 +28,123 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	}.groupBy{
 		case (instance_geometry, i) => (instance_geometry \ "bind_material" \ "technique_common" \ "instance_material" \@ "target")
 	}
-	private def floatListForStride(vertAttrs:Map[Int,NodeSeq], stride:Int):List[Float] = {
-		vertAttrs.get(stride).map{attr => (attr\"float_array").text.trim.split(" ").map(_.toFloat).toList}.getOrElse(Nil)
+	
+	private def getInput(e:Elem):((String, Option[Int]), String) = {
+		e \@ "source" match {
+			case FragURL(id) =>
+				((e \@ "semantic", e.attribute("set").map(_.text.toInt)), id)
+		}
+	}
+	private def getInput(ns:NodeSeq, sem:String):Option[(String, Elem)] = {
+		ns.collectFirst{
+			case e:Elem if (e \@ "semantic") == sem =>
+				e \@ "source" match {
+					case FragURL(id) =>
+						(id, e)
+				}
+		}
 	}
 	
+	private def srcAccessor(e:Elem):NodeSeq = {
+		e\"technique_common"\"accessor"
+	}
+	
+	/*************************************************
+	 * Operating assumptions:
+	 * - every mesh which uses the same material has
+	 * - (a) the same set of semantics
+	 * - (b) the same assignment of semantics to
+	 * index offsets.
+	 * - all params for the same source array have the same type (and are packed)
+	 *************************************************/
 	private val batchedArrays = batchBuckets.map{
 		case(matUrl, geomToBatch) => 
-			(matUrl, geomToBatch.foldLeft((List[Float](),List[Float](),List[Float](),List[Int]())){
-				case((batchIDs,positions, texCoords, indices),(instance_geometry,batchId)) =>
-					(instance_geometry \@ "url").splitAt(1) match {
-						case ("#",geomID) => 
-							val (pHere, tCHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
+			(matUrl, geomToBatch.foldLeft((List[Int](),Map[(String,Int,Option[Int]),List[_ <: AnyVal]](),Map[(String,Int,Option[Int]),(String,List[String])](),List[Int]())){
+				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,batchId)) =>
+					(instance_geometry \@ "url") match {
+						case FragURL(geomID) =>
+							val (sVMHere, oSMHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
 								case mesh:Elem =>
-									val vertAttrs = (mesh\"source").groupBy{e => (e\"technique_common"\"accessor"\@"stride").toInt}
-									(	floatListForStride(vertAttrs,3), floatListForStride(vertAttrs,2),
-										(mesh\"triangles"\"p").text.trim.split(" ").map(_.toInt))
+									val byId = toIdDict(mesh \\ "_")
+									val tris = (mesh \ "triangles")
+									val triInputs = tris \ "input"
+									val iHere = (tris \ "p").text.trim.split(" ").map(_.toInt)
+									
+									val oSMHere = triInputs.groupBy { case i:Elem => (i \@ "offset").toInt }.map {
+										case (offset, semsAtOfs) => (offset -> semsAtOfs.map{
+											case e:Elem => 
+												val (sem, srcId) = getInput(e) match {
+													case ((semN@"VERTEX", semS), vId) =>
+														getInput(byId(vId) \ "input", "POSITION").map {
+															case (pId, _) => ((semN, semS), pId)
+														}.getOrElse(throw new RuntimeException("Position is required"))
+													case r@_ => r
+												}
+												val params = srcAccessor(byId(srcId)) \ "param"
+												(srcId -> (sem, params.head \@ "type", params.map{_ \@ "name"}.toList))
+										}.toMap)
+									}
+									val sVMHere = oSMHere.flatMap{
+										case (o, m) => m.map{
+											case (id, (sem, vType, _)) =>
+												val numericize:(String => AnyVal) = vType match {
+													case "float" => {s:String => s.toFloat}
+													case "int" => {s:String => s.toInt}
+													case "boolean" => {s:String => s.toBoolean}
+												}
+												((sem._1, o, sem._2) -> (byId(id) \ s"${vType}_array").text.trim.split(" ").map(numericize).toList)
+										}
+											
+									}
+									
+									(sVMHere, oSMHere, iHere)
 							}.getOrElse{throw new RuntimeException(s"Can't find a mesh element for geometry with id '$geomID'")}
 							
-							val nPVerts = pHere.length / 3
-							val nTVerts = tCHere.length / 2
-							assert((nPVerts == nTVerts) || (nTVerts == 0))
-							val windowHere = if(nPVerts > 0 && nTVerts == 0) 1 else 2
+							val nBatchIndex = batchIDs.length
+							val windowLen = oSMHere.size
 							
-							val prevNVerts = positions.length / 3
-							(batchIDs ++ List.fill(nPVerts)(batchId.toFloat), positions ++ pHere, texCoords ++ tCHere, indices ++ iHere.sliding(1,windowHere).flatMap{i => List.fill(windowHere+1)(i(0) + prevNVerts)})
+							val ofsSoFar = Array.iterate(0, windowLen){
+								case ofs =>
+									val sVMKey = oSMHere(ofs).head._2._1
+									semVertsMap.get((sVMKey._1, ofs, sVMKey._2)).map{_.size}.getOrElse(0)
+							}
+							
+							(batchIDs :+ batchId, sVMHere.map{
+								case (s, l) =>
+									(s -> semVertsMap.get(s).map{
+										_ ++ l
+									}.getOrElse(l))
+							}, oSMHere.flatMap{
+								case (o, m) => m.map {
+									case (id, ((semN, semS), vType, vNs)) =>
+										((semN, o, semS) -> (vType, vNs))
+								}
+							}, indices ++ iHere.grouped(windowLen).flatMap{
+								_.zipWithIndex.map{
+									case (i, ofs) =>
+										i + ofsSoFar(ofs)
+								} :+ nBatchIndex
+							})
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
 			})
 	}
 	
 	private def joinId(components:String*):String = components.mkString("-")
-	private def genFloatArray(contents:Seq[Float], strideNames:Seq[String], parentId:String, semantic:String):(String,Elem) = {
+	private def genArrayOfType(contents:Seq[_ <: AnyVal], strideNames:Seq[String], parentId:String, semantic:String, vType:String):(String,Elem) = {
 		val littleS = semantic.toLowerCase
 		val id = joinId(parentId, littleS)
 		val arrayId = joinId(id, "array")
 		val strideLen = strideNames.length
 		val xmlOut = <source id={id}>
-			<float_array count={contents.length.toString} id={arrayId}>{contents.mkString(" ")}</float_array>
+			{
+				val arrayFrag = <_array count={contents.length.toString} id={arrayId}>{contents.mkString(" ")}</_array>
+				arrayFrag.copy(label=s"$vType${arrayFrag.label}")
+			}
 			<technique_common>
 				<accessor stride={strideLen.toString} count={(contents.length / strideLen).toString} source={s"#$arrayId"}>
 					{strideNames.map{name =>
-							<param type="float" name={name}/>
+							<param type={vType} name={name}/>
 					}}
 				</accessor>
 			</technique_common>
@@ -76,28 +153,38 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	}
 	
 	private val newGeoms = batchedArrays.zipWithIndex.map{
-		case((matUrl, (batchIDs,positions, texCoords, indices)), batchI) =>
+		case((matUrl, (batchIDs,semVertsDataMap, semVertsConfigMap, indices)), batchI) =>
 			val geomId = s"batch$batchI"
 			val vertsId = joinId(geomId,"vertex")
-			val attributes = Map(
-					"POSITION" -> (positions, List("X","Y","Z")),
-					"TEXCOORD" -> (texCoords, List("U","V")),
-					"BATCHID" -> (batchIDs, List("I"))).collect{ case(sem,(con,sN)) if con.length > 0 => (sem->genFloatArray(con,sN,geomId,sem))}
+			val attributes = (semVertsDataMap.foldLeft(Map[String,Map[(Int,Option[Int]),(String,List[String],List[_ <: AnyVal])]]()){
+				case (attrSoFar, (sem@(semN, ofs, semS), data)) =>
+					val (vType, vKeys) = semVertsConfigMap(sem)
+					attrSoFar + (semN -> (attrSoFar.get(semN).getOrElse(Map()) + ((ofs, semS) -> (vType, vKeys, data))))
+			} + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))).map{
+				case (semN,subSem) =>
+					(semN -> subSem.map{
+						case ((ofs, semS),(vType,vKeys,data)) =>
+							assert(data.length > 0)
+							(ofs, semS) -> genArrayOfType(data, vKeys, geomId, semN, vType)
+					})
+			}
+			
 			val vertCount = indices.length / 3
 			val xmlOut = <geometry id={geomId}>
 				<mesh>
-					{attributes.map{ _._2._2 }}
+					{attributes.flatMap{ _._2.map(_._2._2) }}
 					<vertices id={vertsId}>
-						<input source={s"#${attributes("POSITION")._1}"} semantic="POSITION" />
+						<input source={s"#${attributes("VERTEX").head._2._1}"} semantic="POSITION" />
 					</vertices>
 					<triangles material={matUrl.tail} count={vertCount.toString}>
-						{attributes.zipWithIndex.map{
-							case ((sem,(id,_)),i) =>
-								val (tId, tSem) = sem match {
-									case "POSITION" => (vertsId, "VERTEX")
-									case _ => (id, sem)
-								}
-								<input offset={i.toString} source={s"#$tId"} semantic={tSem}/>
+						{attributes.flatMap{
+							case (semN, subSem) => subSem.map{
+								case ((ofs, semS),(id,_)) =>
+									val (tId, tSem) = (if(semN == "VERTEX") vertsId else id, semN)
+									<input offset={ofs.toString} source={s"#$tId"} semantic={tSem}/> % semS.map{
+										setV => Attribute("set",Text(setV.toString).theSeq, Null)
+									}.getOrElse(Null)
+							}
 						}}
 						<p>{indices.mkString(" ")}</p>
 					</triangles>
