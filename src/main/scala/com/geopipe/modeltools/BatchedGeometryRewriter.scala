@@ -131,12 +131,12 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	}
 	
 	private def joinId(components:String*):String = components.mkString("-")
-	private def genArrayOfType(contents:Seq[_ <: AnyVal], strideNames:Seq[String], parentId:String, semantic:String, vType:String):(String,Elem) = {
+	private def genArrayOfType(contents:Seq[_ <: AnyVal], strideNames:Seq[String], parentId:String, semantic:String, offset:Int, set:Option[Int], vType:String):(String,Elem) = {
 		val littleS = semantic.toLowerCase match {
 			case "vertex" => "position"
 			case s@_ => s
 		}
-		val id = joinId(parentId, littleS)
+		val id = joinId(List(parentId, littleS, offset.toString) ++ set.map{_.toString} :_*)
 		val arrayId = joinId(id, "array")
 		val strideLen = strideNames.length
 		val xmlOut = <source id={id}>
@@ -168,7 +168,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 					(semN -> subSem.map{
 						case ((ofs, semS),(vType,vKeys,data)) =>
 							assert(data.length > 0)
-							(ofs, semS) -> genArrayOfType(data, vKeys, geomId, semN, vType)
+							(ofs, semS) -> genArrayOfType(data, vKeys, geomId, semN, ofs, semS, vType)
 					})
 			}
 			
