@@ -105,7 +105,8 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 							
 							val ofsSoFar = Array.iterate(0, windowLen){
 								case ofs =>
-									val sVMKey = oSMHere(ofs).head._2._1
+									val sVMStatus = oSMHere(ofs).head._2
+									val sVMKey = sVMStatus._1
 									semVertsMap.get((sVMKey._1, ofs, sVMKey._2)).map{_.size}.getOrElse(0)
 							}
 							
@@ -123,7 +124,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 								_.zipWithIndex.map{
 									case (i, ofs) =>
 										i + ofsSoFar(ofs)
-								} :+ nBatchIndex
+								} //:+ nBatchIndex
 							})
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
@@ -163,7 +164,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				case (attrSoFar, (sem@(semN, ofs, semS), data)) =>
 					val (vType, vKeys) = semVertsConfigMap(sem)
 					attrSoFar + (semN -> (attrSoFar.get(semN).getOrElse(Map()) + ((ofs, semS) -> (vType, vKeys, data))))
-			} + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))).map{
+			}/* + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))*/).map{
 				case (semN,subSem) =>
 					(semN -> subSem.map{
 						case ((ofs, semS),(vType,vKeys,data)) =>
