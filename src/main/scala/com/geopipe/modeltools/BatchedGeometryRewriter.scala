@@ -93,34 +93,13 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 													case "boolean" => {s:String => s.toBoolean}
 												}
 												((sem._1, o, sem._2) -> (byId(id) \ s"${vType}_array").text.trim.split(" ").map(numericize).toList)
-										}
-											
+										}	
 									}
-									
 									(sVMHere, oSMHere, iHere)
 							}.getOrElse{throw new RuntimeException(s"Can't find a mesh element for geometry with id '$geomID'")}
 							
-							Console.println(s"Concatenating mesh:")
-							Console.println(s"has existings semantics:${semVertsMap.keySet} (${ofsSemMap.keySet})")
-							Console.println(s"now with ${sVMHere.map( p => (p._1, p._2.size))} (${oSMHere.map(p => (p._1, p._2.keySet))})")
-
-							/* - strip textures
-							iHere = {
-								var i = 0
-								iHere.filter{ x =>
-									val ret = i % oSMHere.size == 0
-									i += 1
-									ret
-								}
-							}
-							oSMHere = oSMHere.filter(_._1 == 0)
-							sVMHere = sVMHere.filter(_._1._2 == 0)
-							*/
-							
 							val nBatchIndex = batchIDs.length
 							val windowLen = oSMHere.size
-							
-							Console.println(nBatchIndex, windowLen)
 							
 							val ofsSoFar = Array.tabulate(windowLen){
 								case ofs =>
@@ -128,12 +107,10 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 									val sVMKey = sVMStatus._1
 									val keyU = (sVMKey._1, ofs, sVMKey._2)
 									val paramList = sVMStatus._3
-									val ret = semVertsMap.get(keyU).map{_.size}.getOrElse(0) / paramList.length
-									Console.println(s"Offsetting $keyU by $ret")
-									ret
+									semVertsMap.get(keyU).map{_.size}.getOrElse(0) / paramList.length
 							}
 							
-							val out = (batchIDs :+ batchId, sVMHere.map{
+							(batchIDs :+ batchId, sVMHere.map{
 								case (s, l) =>
 									(s -> semVertsMap.get(s).map{
 										_ ++ l
@@ -147,38 +124,8 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 								_.zip(ofsSoFar).map{
 									case (idx, ofs) =>
 										idx + ofs
-								} // :+ nBatchIndex
+								} :+ nBatchIndex
 							})
-
-							/***************************************************
-							 * The less costly version of the earlier test
-							 ***************************************************/
-							def filterNth(idxs:Seq[Int], n:Int, mod:Int):Seq[Int] = {
-								var i = 0
-								idxs.filter{ x =>
-									val ret = (i % mod) == n
-									i += 1
-									ret
-								}
-							}
-							ofsSoFar.zipWithIndex.foreach{
-								case(ofs, i) =>
-									Console.print(s"Validating offset of $ofs at $i...")
-									val oTail = out._4.drop(indices.length)
-									val myFilter:Seq[Int] => Seq[Int] = filterNth(_, i, ofsSoFar.length)
-									val succ = ((myFilter(oTail) zip myFilter(iHere)).forall{case(oT, iH) => oT - ofs == iH})
-									Console.println(succ)
-									assert(succ)
-							}
-							
-							out._2.foreach{
-								case (sem, l) =>
-									Console.println(s"Total ${sem} count: ${l.size} (should be ${semVertsMap.get(sem).map(_.size).getOrElse(0)} + ${sVMHere(sem).size})")
-							}
-							Console.println(s"Total index count: ${out._4.length} (should be ${indices.length} + ${iHere.length} + (${iHere.length / windowLen} with batchIDs))")
-							Console.println()
-
-							out
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
 			})
@@ -217,7 +164,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				case (attrSoFar, (sem@(semN, ofs, semS), data)) =>
 					val (vType, vKeys) = semVertsConfigMap(sem)
 					attrSoFar + (semN -> (attrSoFar.get(semN).getOrElse(Map()) + ((ofs, semS) -> (vType, vKeys, data))))
-			}/* + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))*/).map{
+			} + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))).map{
 				case (semN,subSem) =>
 					(semN -> subSem.map{
 						case ((ofs, semS),(vType,vKeys,data)) =>
@@ -226,7 +173,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 					})
 			}
 			
-			val triCount = indices.length / (3 * semVertsConfigMap.map(_._1._2).toSet.size)
+			val triCount = indices.length / (3 * attributes.flatMap(_._2.map(_._1._1)).toSet.size)
 			val xmlOut = <geometry id={geomId}>
 				<mesh>
 					{attributes.flatMap{ _._2.map(_._2._2) }}
