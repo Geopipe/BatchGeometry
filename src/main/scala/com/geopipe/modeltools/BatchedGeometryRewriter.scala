@@ -100,17 +100,26 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 									(sVMHere, oSMHere, iHere)
 							}.getOrElse{throw new RuntimeException(s"Can't find a mesh element for geometry with id '$geomID'")}
 							
+							Console.println(s"Concatenating mesh:")
+							Console.println(s"has existings semantics:${semVertsMap.keySet} (${ofsSemMap.keySet})")
+							Console.println(s"now with ${sVMHere.map( p => (p._1, p._2.size))} (${oSMHere.map(p => (p._1, p._2.keySet))})")
+							
 							val nBatchIndex = batchIDs.length
 							val windowLen = oSMHere.size
+							
+							Console.println(nBatchIndex, windowLen)
 							
 							val ofsSoFar = Array.tabulate(windowLen){
 								case ofs =>
 									val sVMStatus = oSMHere(ofs).head._2
 									val sVMKey = sVMStatus._1
-									semVertsMap.get((sVMKey._1, ofs, sVMKey._2)).map{_.size}.getOrElse(0)
+									val keyU = (sVMKey._1, ofs, sVMKey._2)
+									val ret = semVertsMap.get(keyU).map{_.size}.getOrElse(0)
+									Console.println(s"Offsetting $keyU by $ret")
+									ret
 							}
 							
-							(batchIDs :+ batchId, sVMHere.map{
+							val out = (batchIDs :+ batchId, sVMHere.map{
 								case (s, l) =>
 									(s -> semVertsMap.get(s).map{
 										_ ++ l
@@ -121,8 +130,41 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 										((semN, o, semS) -> (vType, vNs))
 								}
 							}, indices ++ iHere.grouped(windowLen).flatMap{
-								_.zip(ofsSoFar).map{p => p._1 + p._2} // :+ nBatchIndex
+								_.zip(ofsSoFar).map{
+									case (idx, ofs) =>
+										idx + ofs
+								} // :+ nBatchIndex
 							})
+
+							/***************************************************
+							 * The less costly version of the earlier test
+							 ***************************************************/
+							def filterNth(idxs:Seq[Int], n:Int, mod:Int):Seq[Int] = {
+								var i = 0
+								idxs.filter{ x =>
+									val ret = (i % mod) == n
+									i += 1
+									ret
+								}
+							}
+							ofsSoFar.zipWithIndex.foreach{
+								case(ofs, i) =>
+									Console.print(s"Validating offset of $ofs at $i...")
+									val oTail = out._4.drop(indices.length)
+									val myFilter:Seq[Int] => Seq[Int] = filterNth(_, i, ofsSoFar.length)
+									val succ = ((myFilter(oTail) zip myFilter(iHere)).forall{case(oT, iH) => oT - ofs == iH})
+									Console.println(succ)
+									assert(succ)
+							}
+							
+							out._2.foreach{
+								case (sem, l) =>
+									Console.println(s"Total ${sem} count: ${l.size} (should be ${semVertsMap.get(sem).map(_.size).getOrElse(0)} + ${sVMHere(sem).size})")
+							}
+							Console.println(s"Total index count: ${out._4.length} (should be ${indices.length} + ${iHere.length} + (${iHere.length / windowLen} with batchIDs))")
+							Console.println()
+
+							out
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
 			})
