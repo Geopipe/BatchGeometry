@@ -63,7 +63,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,batchId)) =>
 					(instance_geometry \@ "url") match {
 						case FragURL(geomID) =>
-							val (sVMHere, oSMHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
+							var (sVMHere, oSMHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
 								case mesh:Elem =>
 									val byId = toIdDict(mesh \\ "_")
 									val tris = (mesh \ "triangles")
@@ -103,6 +103,19 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 							Console.println(s"Concatenating mesh:")
 							Console.println(s"has existings semantics:${semVertsMap.keySet} (${ofsSemMap.keySet})")
 							Console.println(s"now with ${sVMHere.map( p => (p._1, p._2.size))} (${oSMHere.map(p => (p._1, p._2.keySet))})")
+
+							//* - strip textures
+							iHere = {
+								var i = 0
+								iHere.filter{ x =>
+									val ret = i % oSMHere.size == 0
+									i += 1
+									ret
+								}
+							}
+							oSMHere = oSMHere.filter(_._1 == 0)
+							sVMHere = sVMHere.filter(_._1._2 == 0)
+							//*/
 							
 							val nBatchIndex = batchIDs.length
 							val windowLen = oSMHere.size
@@ -114,7 +127,8 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 									val sVMStatus = oSMHere(ofs).head._2
 									val sVMKey = sVMStatus._1
 									val keyU = (sVMKey._1, ofs, sVMKey._2)
-									val ret = semVertsMap.get(keyU).map{_.size}.getOrElse(0)
+									val paramList = sVMStatus._3
+									val ret = semVertsMap.get(keyU).map{_.size}.getOrElse(0) / paramList.length
 									Console.println(s"Offsetting $keyU by $ret")
 									ret
 							}
