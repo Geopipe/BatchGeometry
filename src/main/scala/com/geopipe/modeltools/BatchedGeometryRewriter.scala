@@ -6,7 +6,7 @@ import scala.xml.transform._
 import org.json4s._
 
 class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
-	import MiscHelpers.{toIdDict, FragURL}
+	import MiscHelpers.{toIdDict, FragURL, OptionableBoolean}
 	
 	
 	private val indexedSceneNodes = MiscHelpers.retrieveSceneNodes(collada).zipWithIndex
@@ -22,11 +22,14 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	}.toList)
 	
 	private val batchBuckets = indexedSceneNodes.flatMap{
-		case(node:Elem, i) if Set("0 0 0","").contains((node\"translate").text) => 
-			(node\"instance_geometry").collect{case e:Elem =>(e,i)}
-		case (n, _) => throw new UnsupportedOperationException(s"The current version of this tool does not handle the case where the node base-point is not at the origin, but we got '${n\"translate"}'")
+		case(node:Elem, i) => 
+			val translation = (node\"translate").text match {
+				case "" => None
+				case vec => Some(vec.split(" ").map(_.toFloat))
+			}
+			(node\"instance_geometry").collect{case e:Elem =>(e,translation,i)}
 	}.groupBy{
-		case (instance_geometry, i) => (instance_geometry \ "bind_material" \ "technique_common" \ "instance_material" \@ "target")
+		case (instance_geometry, _, _) => (instance_geometry \ "bind_material" \ "technique_common" \ "instance_material" \@ "target")
 	}
 	
 	private def getInput(e:Elem):((String, Option[Int]), String) = {
@@ -60,7 +63,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	private val batchedArrays = batchBuckets.map{
 		case(matUrl, geomToBatch) => 
 			(matUrl, geomToBatch.foldLeft((List[Int](),Map[(String,Int,Option[Int]),List[_ <: AnyVal]](),Map[(String,Int,Option[Int]),(String,List[String])](),List[Int]())){
-				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,batchId)) =>
+				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,translation,batchId)) =>
 					(instance_geometry \@ "url") match {
 						case FragURL(geomID) =>
 							val (sVMHere, oSMHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
@@ -110,17 +113,29 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 									semVertsMap.get(keyU).map{_.size}.getOrElse(0) / paramList.length
 							}
 							
-							(batchIDs :+ batchId, sVMHere.map{
-								case (s, l) =>
-									(s -> semVertsMap.get(s).map{
-										_ ++ l
-									}.getOrElse(l))
-							}, oSMHere.flatMap{
+							val oSMOut = oSMHere.flatMap{
 								case (o, m) => m.map {
 									case (id, ((semN, semS), vType, vNs)) =>
 										((semN, o, semS) -> (vType, vNs))
 								}
-							}, indices ++ iHere.grouped(windowLen).flatMap{
+							}
+							
+							(batchIDs :+ batchId, sVMHere.map{
+								case (s, l) =>
+									val lTrans = (s._1 == "VERTEX").withOption {
+										translation
+									}.map{
+										t =>
+											// This will blow up badly if position vectors aren't floats
+											// And we need to do more metaprogramming to fix that
+											// For now, the assert should do
+											assert(oSMOut(s)._1 == "float")
+											l.asInstanceOf[List[Float]].grouped(translation.size).flatMap{
+												_.zip(t).map(p => p._1.toFloat + p._2)
+											}
+									}.getOrElse(l).toList
+									(s ->  semVertsMap.get(s).map{ _ ++ lTrans }.getOrElse(lTrans))
+							}, oSMOut, indices ++ iHere.grouped(windowLen).flatMap{
 								_.zip(ofsSoFar).map{
 									case (idx, ofs) =>
 										idx + ofs
