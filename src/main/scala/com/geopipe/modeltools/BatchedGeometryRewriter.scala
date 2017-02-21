@@ -226,14 +226,14 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 					})
 			}
 			
-			val vertCount = indices.length / 3
+			val triCount = indices.length / (3 * semVertsConfigMap.map(_._1._2).toSet.size)
 			val xmlOut = <geometry id={geomId}>
 				<mesh>
 					{attributes.flatMap{ _._2.map(_._2._2) }}
 					<vertices id={vertsId}>
 						<input source={s"#${attributes("VERTEX").head._2._1}"} semantic="POSITION" />
 					</vertices>
-					<triangles material={matUrl.tail} count={vertCount.toString}>
+					<triangles material={matUrl.tail} count={triCount.toString}>
 						{attributes.flatMap{
 							case (semN, subSem) => subSem.map{
 								case ((ofs, semS),(id,_)) =>
