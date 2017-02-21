@@ -133,7 +133,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 								_.zip(ofsSoFar).map{
 									case (idx, ofs) =>
 										idx + ofs
-								} // :+ nBatchIndex
+								} :+ nBatchIndex
 							})
 
 							/***************************************************
@@ -203,7 +203,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				case (attrSoFar, (sem@(semN, ofs, semS), data)) =>
 					val (vType, vKeys) = semVertsConfigMap(sem)
 					attrSoFar + (semN -> (attrSoFar.get(semN).getOrElse(Map()) + ((ofs, semS) -> (vType, vKeys, data))))
-			}/* + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))*/).map{
+			} + ("BATCHID" -> Map((semVertsDataMap.size, None) -> ("int", List("I"), batchIDs)))).map{
 				case (semN,subSem) =>
 					(semN -> subSem.map{
 						case ((ofs, semS),(vType,vKeys,data)) =>
