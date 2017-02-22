@@ -1,9 +1,10 @@
 package com.geopipe.modeltools
 
 import scala.xml._
-import scala.xml.transform._
+import scala.xml.transform.RewriteRule
 
 import com.geopipe.profiling.TicToc.{tic,toc}
+import com.geopipe.xml.RuleApplicator
 
 class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	
@@ -32,7 +33,7 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 			val effectId = nodeHere \@ "id"
 			uniqueEffects.find{case (testId, testNode) =>
 				val tryReplaceWith = Map(effectId -> testId)
-				val replacer = new RuleTransformer(new ReplaceEffectIdRewriter(tryReplaceWith))
+				val replacer = new RuleApplicator(new ReplaceEffectIdRewriter(tryReplaceWith))
 				val replacement = replacer(nodeHere)
 				Utility.trim(testNode) xml_== Utility.trim(replacement) 
 			}.fold( (uniqueEffects + ((effectId, nodeHere)), replaceWith) ){

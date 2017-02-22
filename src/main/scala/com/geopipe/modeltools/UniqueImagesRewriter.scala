@@ -1,7 +1,6 @@
 package com.geopipe.modeltools
 
 import scala.xml._
-import scala.xml.transform._
 
 import com.geopipe.profiling.TicToc.{tic,toc}
 

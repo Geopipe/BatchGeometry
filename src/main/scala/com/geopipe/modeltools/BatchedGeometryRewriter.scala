@@ -1,7 +1,6 @@
 package com.geopipe.modeltools
 
 import scala.xml._
-import scala.xml.transform._
 
 import org.json4s._
 

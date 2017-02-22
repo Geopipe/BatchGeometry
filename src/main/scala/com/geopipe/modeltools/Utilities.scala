@@ -2,7 +2,6 @@ package com.geopipe.modeltools
 
 
 import scala.xml._
-import scala.xml.transform._
 import scala.language.implicitConversions
 
 
