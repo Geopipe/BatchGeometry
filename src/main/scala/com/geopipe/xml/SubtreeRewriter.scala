@@ -2,15 +2,15 @@ package com.geopipe.xml
 
 import scala.xml.{Node, Elem}
 
-object RuleApplicator {
+object SubtreeRewriter {
 	def apply(rules:PartialFunction[Node, Node]*) = {
 		val rule = rules.reduceLeft(_ orElse _)
-		new RuleApplicator(rule)
+		new SubtreeRewriter(rule)
 	}
 }
 
 /* We don't descend after we replace a subtree */
-class RuleApplicator private (rule:PartialFunction[Node, Node]) {
+class SubtreeRewriter private (rule:PartialFunction[Node, Node]) {
 	def apply(n: Node): Node = {
 		rule.applyOrElse[Node,Node](n, {
 			case e:Elem => e.copy(child = e.child.map(this(_)))

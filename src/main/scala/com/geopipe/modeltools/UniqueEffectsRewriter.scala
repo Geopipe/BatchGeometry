@@ -4,7 +4,7 @@ import scala.xml._
 import scala.xml.transform.RewriteRule
 
 import com.geopipe.profiling.TicToc.{tic,toc}
-import com.geopipe.xml.RuleApplicator
+import com.geopipe.xml.SubtreeRewriter
 
 class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	object ReplaceEffectIdRewriter {
