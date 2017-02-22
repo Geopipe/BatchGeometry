@@ -3,7 +3,7 @@ package com.geopipe.modeltools
 import scala.xml._
 
 import com.geopipe.profiling.TicToc.{tic,toc}
-import com.geopipe.xml.SubtreeRewriter
+import com.geopipe.xml.RuleApplicator
 
 abstract class PipelineRuleStage[+T] extends PartialFunction[Node,Node] {
 	def sideChannel:Map[Class[_],T] = Map()
@@ -22,7 +22,7 @@ class TransformerPipeline[+T](pipeline:Seq[Node => PipelineRuleStage[T]]) {
 				toc(s"rewriterAlloc at stage $i")
 				
 				tic
-				val ret = SubtreeRewriter(stage)(collada)
+				val ret = RuleApplicator(stage)(collada)
 				toc(s"rewriter execution at stage $i")
 				i += 1
 				(ret, sideChannel ++ stage.sideChannel)

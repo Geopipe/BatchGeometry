@@ -2,7 +2,7 @@ package com.geopipe.modeltools
 
 import scala.xml._
 
-import com.geopipe.xml.SubtreeRewriter
+import com.geopipe.xml.RuleApplicator
 
 trait ElemMatchAndUpdate {
 	private[this] val self = this // Apparently can't use this as an extractor directly???
@@ -131,7 +131,7 @@ class EffectNeedsUpdate(replacements:Map[String,String]) extends ElemMatchAndUpd
 				
 				val updatedTextures = textureNeedsUpdate.collectUpdates(textures)
 				
-				val techniqueTransformer = SubtreeRewriter(updatedTextures)
+				val techniqueTransformer = RuleApplicator(updatedTextures)
 				val updatedTechniques = (effectProfile \ "technique").map(t => (t -> techniqueTransformer(t))).toMap
 
 				val paramUpdater = new ParamNeedsUpdate(updatedSurfaces, updatedSamplers, replacements)
