@@ -1,7 +1,6 @@
 package com.geopipe.modeltools
 
 import scala.xml._
-import scala.xml.transform.RewriteRule
 
 import com.geopipe.xml.RuleApplicator
 
@@ -115,12 +114,9 @@ class MaterialDuplicatesInstanceEffect(uniques:Set[(String, Elem)], replacements
 	}
 }
 
-class TechniqueRewriter(updatedTextures:Map[Elem, Elem]) extends RewriteRule {
-	override def transform(n: Node): Seq[Node] = {
-		n match {
-			case e:Elem if e.label == "texture" =>	updatedTextures.getOrElse(e, e)
-			case _ => n
-		}
+object TechniqueRewriter {
+	def apply(updatedTextures:Map[Elem, Elem]):PartialFunction[Node,Node] = {
+		MiscHelpers.elemFilt(updatedTextures)
 	}
 }
 
@@ -141,7 +137,7 @@ class EffectNeedsUpdate(replacements:Map[String,String]) extends ElemMatchAndUpd
 				
 				val updatedTextures = textureNeedsUpdate.collectUpdates(textures)
 				
-				val techniqueTransformer = new RuleApplicator(new TechniqueRewriter(updatedTextures))
+				val techniqueTransformer = RuleApplicator(TechniqueRewriter(updatedTextures))
 				val updatedTechniques = (effectProfile \ "technique").map(t => (t -> techniqueTransformer(t))).toMap
 
 				val paramUpdater = new ParamNeedsUpdate(updatedSurfaces, updatedSamplers, replacements)

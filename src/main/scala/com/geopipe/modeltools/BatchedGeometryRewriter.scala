@@ -268,15 +268,8 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	toc("assigning to node")
 	
 	override def sideChannel =	Map(classOf[BatchedGeometryRewriter] -> metaData)
-	override def transform(n:Node):Seq[Node] = {
-		n match {
-			case e:Elem =>
-				e.label match {
-					case "library_geometries" => e.copy(child = newGeoms.map(_._2._2).toSeq)
-					case "visual_scene" => e.copy(child = newNode)
-					case _ => e
-				}
-			case _ => n
-		}
+	override protected val impl:PartialFunction[Node, Node] = {
+		case e:Elem if e.label == "library_geometries" => e.copy(child = newGeoms.map(_._2._2).toSeq)
+		case e:Elem if e.label == "visual_scene" => e.copy(child = newNode)
 	}
 }

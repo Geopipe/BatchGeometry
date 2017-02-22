@@ -27,6 +27,10 @@ object MiscHelpers {
 		def unapply(s:String):Option[String] = (s(0) == '#').toOption(s.tail)
 	}
 	
+	private val eFilt:PartialFunction[Node,Elem] = {case e:Elem => e}
+	private def eFiltIf(p:Elem=>Boolean):PartialFunction[Node,Elem] = {case e:Elem if p(e) => e}
+	def elemFilt[Z](f:PartialFunction[Elem,Z]):PartialFunction[Node,Z] = eFilt.andThen(f)
+	def elemFiltIf[Z](p:Elem=>Boolean)(f:PartialFunction[Elem,Z]):PartialFunction[Node,Z] = eFiltIf(p).andThen(f)
 }
 
 object MetaDataHelpers {

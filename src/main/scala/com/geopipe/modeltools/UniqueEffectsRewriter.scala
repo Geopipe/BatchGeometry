@@ -7,21 +7,20 @@ import com.geopipe.profiling.TicToc.{tic,toc}
 import com.geopipe.xml.RuleApplicator
 
 class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
+	import MiscHelpers.elemFilt
 	
-	class ReplaceEffectIdRewriter(replacements:Map[String, String]) extends RewriteRule {
-		val updateEffect = new ElemNeedsUpdate("effect",Map(),new MetaDataNeedsUpdate(Set("name","id"), replacements))
-		val updateNewParam = new ElemNeedsUpdate("newparam",Map(),new MetaDataNeedsUpdate(Set("sid"),replacements))
-		val updateTexture = new ElemNeedsUpdate("texture",Map(),new MetaDataNeedsUpdate(Set("texture"),replacements))
-		val updateSource = new ElemNeedsUpdate("source",replacements)
+	object ReplaceEffectIdRewriter {
+		def apply(replacements:Map[String, String]):PartialFunction[Node,Node] = {
+			val updateEffect = new ElemNeedsUpdate("effect",Map(),new MetaDataNeedsUpdate(Set("name","id"), replacements))
+			val updateNewParam = new ElemNeedsUpdate("newparam",Map(),new MetaDataNeedsUpdate(Set("sid"),replacements))
+			val updateTexture = new ElemNeedsUpdate("texture",Map(),new MetaDataNeedsUpdate(Set("texture"),replacements))
+			val updateSource = new ElemNeedsUpdate("source",replacements)
 		
-		override def transform(n: Node): Seq[Node] = {
-			n match {
+			{
 				case updateEffect(_,e) => e
 				case updateNewParam(_,e) => e
 				case updateTexture(_,e) => e
 				case updateSource(_,e) => e
-				case e:Elem => e
-				case _ => n
 			}
 		}
 	}
@@ -33,7 +32,7 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 			val effectId = nodeHere \@ "id"
 			uniqueEffects.find{case (testId, testNode) =>
 				val tryReplaceWith = Map(effectId -> testId)
-				val replacer = new RuleApplicator(new ReplaceEffectIdRewriter(tryReplaceWith))
+				val replacer = RuleApplicator(ReplaceEffectIdRewriter(tryReplaceWith))
 				val replacement = replacer(nodeHere)
 				Utility.trim(testNode) xml_== Utility.trim(replacement) 
 			}.fold( (uniqueEffects + ((effectId, nodeHere)), replaceWith) ){
@@ -69,16 +68,9 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	val updatedInstanceMaterials = instanceMaterialNeedsUpdate.collectUpdates(instanceMaterials)
 	toc("instanceMat replacements")
 	
-	override def sideChannel() = Map()
-	override def transform(n: Node): Seq[Node] = n match {
-		case e:Elem =>
-			e.label match {
-				case "library_effects" => e.copy(child = uniqueEffects.map(_._2).toSeq)
-				case "library_materials" => e.copy(child = updatedMaterials.map(_._2).toSeq)
-				case "triangles" => updatedTriangles.getOrElse(e,e)
-				case "instance_material" => updatedInstanceMaterials.getOrElse(e,e)
-				case _ => e
-			}
-		case _ => n
+	val lEImpl:PartialFunction[Node, Node] = {
+		case e:Elem if e.label == "library_effects" => e.copy(child = uniqueEffects.map(_._2).toSeq)
+		case e:Elem if e.label == "library_materials" => e.copy(child = updatedMaterials.map(_._2).toSeq)
 	}
+	override protected val impl:PartialFunction[Node,Node] = lEImpl.orElse(elemFilt(updatedTriangles)).orElse(elemFilt(updatedInstanceMaterials))
 }
