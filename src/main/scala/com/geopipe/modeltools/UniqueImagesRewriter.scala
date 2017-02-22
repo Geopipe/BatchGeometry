@@ -23,9 +23,8 @@ class UniqueImagesRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	val updatedEffects = effectNeedsUpdate.collectUpdates(effects)
 	toc("updateEffectsMap")
 	
-	private val libraryImpl:PartialFunction[Node, Elem] = MiscHelpers.elemFiltIf(_.label == "library_images"){
-		case e => e.copy(child = uniqueTextures.map(_._2._2).toSeq)
+	private val libraryImpl:PartialFunction[Node, Elem] = {
+		case e:Elem if e.label == "library_images" => e.copy(child = uniqueTextures.map(_._2._2).toSeq)
 	}
-	private val effectImpl = MiscHelpers.elemFilt(updatedEffects)
-	override protected val impl = effectImpl.orElse(libraryImpl)
+	override protected val impl = updatedEffects.orElse(libraryImpl)
 }

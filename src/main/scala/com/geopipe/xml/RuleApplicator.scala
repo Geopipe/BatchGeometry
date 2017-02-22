@@ -9,11 +9,12 @@ object RuleApplicator {
 	}
 }
 
+/* We don't descend after we replace a subtree */
 class RuleApplicator private (rule:PartialFunction[Node, Node]) {
 	def apply(n: Node): Node = {
-		rule.applyOrElse[Node,Node](n, identity[Node]) match {
+		rule.applyOrElse[Node,Node](n, {
 			case e:Elem => e.copy(child = e.child.map(this(_)))
 			case other => other
-		}
+		})
 	}
 }

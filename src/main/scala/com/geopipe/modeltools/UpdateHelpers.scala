@@ -7,7 +7,7 @@ import com.geopipe.xml.RuleApplicator
 trait ElemMatchAndUpdate {
 	private[this] val self = this // Apparently can't use this as an extractor directly???
 	def unapply(e:Elem):Option[(Elem,Elem)]
-	def collectUpdates(n:Seq[Node]):Map[Elem,Elem] = n.collect{ case self(e,u) => (e -> u) }.toMap
+	def collectUpdates(n:Seq[Node]):Map[Node,Elem] = n.collect{ case self(e,u) => (e -> u) }.toMap
 }
 
 class MetaDataNeedsUpdate(targetAttrs:Function1[String,Boolean], replacements:Map[String, String]) {
@@ -72,7 +72,7 @@ class TextureNeedsUpdate(replacements:Map[String,String]) extends ElemMatchAndUp
 	}
 }
 
-class ParamNeedsUpdate(updatedSurfaces:Map[Elem,Elem], updatedSamplers:Map[Elem,Elem], replacements:Map[String,String]) extends ElemMatchAndUpdate {
+class ParamNeedsUpdate(updatedSurfaces:Map[Node,Elem], updatedSamplers:Map[Node,Elem], replacements:Map[String,String]) extends ElemMatchAndUpdate {
 	import MiscHelpers._
 	
 	val metaDataNeedsUpdate = new MetaDataNeedsUpdate(Set("sid"), replacements)
@@ -114,12 +114,6 @@ class MaterialDuplicatesInstanceEffect(uniques:Set[(String, Elem)], replacements
 	}
 }
 
-object TechniqueRewriter {
-	def apply(updatedTextures:Map[Elem, Elem]):PartialFunction[Node,Node] = {
-		MiscHelpers.elemFilt(updatedTextures)
-	}
-}
-
 class EffectNeedsUpdate(replacements:Map[String,String]) extends ElemMatchAndUpdate {
 	val surfaceNeedsUpdate = new SurfaceNeedsUpdate(replacements)
 	val samplerNeedsUpdate = new SamplerNeedsUpdate(replacements)
@@ -137,7 +131,7 @@ class EffectNeedsUpdate(replacements:Map[String,String]) extends ElemMatchAndUpd
 				
 				val updatedTextures = textureNeedsUpdate.collectUpdates(textures)
 				
-				val techniqueTransformer = RuleApplicator(TechniqueRewriter(updatedTextures))
+				val techniqueTransformer = RuleApplicator(updatedTextures)
 				val updatedTechniques = (effectProfile \ "technique").map(t => (t -> techniqueTransformer(t))).toMap
 
 				val paramUpdater = new ParamNeedsUpdate(updatedSurfaces, updatedSamplers, replacements)

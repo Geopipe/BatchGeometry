@@ -7,8 +7,6 @@ import com.geopipe.profiling.TicToc.{tic,toc}
 import com.geopipe.xml.RuleApplicator
 
 class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
-	import MiscHelpers.elemFilt
-	
 	object ReplaceEffectIdRewriter {
 		def apply(replacements:Map[String, String]):PartialFunction[Node,Node] = {
 			val updateEffect = new ElemNeedsUpdate("effect",Map(),new MetaDataNeedsUpdate(Set("name","id"), replacements))
@@ -72,5 +70,5 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 		case e:Elem if e.label == "library_effects" => e.copy(child = uniqueEffects.map(_._2).toSeq)
 		case e:Elem if e.label == "library_materials" => e.copy(child = updatedMaterials.map(_._2).toSeq)
 	}
-	override protected val impl:PartialFunction[Node,Node] = lEImpl.orElse(elemFilt(updatedTriangles)).orElse(elemFilt(updatedInstanceMaterials))
+	override protected val impl:PartialFunction[Node,Node] = lEImpl.orElse(updatedTriangles).orElse(updatedInstanceMaterials)
 }
