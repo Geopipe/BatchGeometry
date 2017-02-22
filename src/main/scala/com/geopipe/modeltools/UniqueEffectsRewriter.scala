@@ -3,6 +3,8 @@ package com.geopipe.modeltools
 import scala.xml._
 import scala.xml.transform._
 
+import com.geopipe.profiling.TicToc.{tic,toc}
+
 class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	
 	class ReplaceEffectIdRewriter(replacements:Map[String, String]) extends RewriteRule {
@@ -23,6 +25,7 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 		}
 	}
 	
+	tic
 	val effects = collada \ "library_effects" \ "effect"
 	val (uniqueEffects, replaceWith) = effects.foldLeft((Set[(String,Node)](),Map[String,String]())){
 		case ((uniqueEffects, replaceWith), nodeHere) =>
@@ -36,7 +39,9 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 				case (replaceId, _) => (uniqueEffects, replaceWith + (effectId -> replaceId)) 	
 			}
 	}
+	toc("effect replacements")
 	
+	tic
 	val materials = collada \ "library_materials" \ "material"
 	val (updatedMaterials, materialReplacements) = materials.foldLeft((Set[(String,Elem)](), Map[String,String]())){
 		case ((uniqueSoFar, replacementsSoFar), materialHere:Elem) =>
@@ -49,16 +54,19 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 					(uniqueSoFar + ((idHere, materialHere)), replacementsSoFar)
 			}
 	}
+	toc("material replacements")
 	
+	tic
 	val triangles = collada \ "library_geometries" \ "geometry" \ "mesh" \ "triangles"
 	val triangleNeedsUpdate = new ElemNeedsUpdate("triangles",Map(),new MetaDataNeedsUpdate(Set("material"),materialReplacements))
 	val updatedTriangles = triangleNeedsUpdate.collectUpdates(triangles)
+	toc("triangle replacements")
 	
-	
+	tic
 	val instanceMaterials = MiscHelpers.retrieveSceneNodes(collada) \ "instance_geometry" \ "bind_material" \\ "instance_material"
 	val instanceMaterialNeedsUpdate = new ElemNeedsUpdate("instance_material",Map(),new MetaDataNeedsUpdate(Set("symbol","target"),materialReplacements))
 	val updatedInstanceMaterials = instanceMaterialNeedsUpdate.collectUpdates(instanceMaterials)
-	
+	toc("instanceMat replacements")
 	
 	override def sideChannel() = Map()
 	override def transform(n: Node): Seq[Node] = n match {

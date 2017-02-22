@@ -5,12 +5,18 @@ import scala.xml.transform._
 
 import org.json4s._
 
+import com.geopipe.profiling.TicToc.{tic,toc}
+
 class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	import MiscHelpers.{toIdDict, FragURL, OptionableBoolean}
 	
-	
+	tic
 	private val indexedSceneNodes = MiscHelpers.retrieveSceneNodes(collada).zipWithIndex
+	toc("indexing scene")
+	tic
 	private val geometryById = toIdDict(collada \ "library_geometries" \ "geometry")
+	toc("identifying geometry")
+	tic
 	private val metaData = JObject(indexedSceneNodes.map{
 		case (node, i) => 
 			val metaDataRoot = node \ "extra" \ "technique"
@@ -20,7 +26,9 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				}
 			}.getOrElse(Nil).toList))
 	}.toList)
+	toc("JSONifying metadata")
 	
+	tic
 	private val batchBuckets = indexedSceneNodes.flatMap{
 		case(node:Elem, i) => 
 			val translation = (node\"translate").text match {
@@ -31,6 +39,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	}.groupBy{
 		case (instance_geometry, _, _) => (instance_geometry \ "bind_material" \ "technique_common" \ "instance_material" \@ "target")
 	}
+	toc("assigning batchBuckets")
 	
 	private def getInput(e:Elem):((String, Option[Int]), String) = {
 		e \@ "source" match {
@@ -60,19 +69,24 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	 * index offsets.
 	 * - all params for the same source array have the same type (and are packed)
 	 *************************************************/
+	tic
 	private val batchedArrays = batchBuckets.map{
 		case(matUrl, geomToBatch) => 
 			(matUrl, geomToBatch.foldLeft((List[Int](),Map[(String,Int,Option[Int]),List[_ <: AnyVal]](),Map[(String,Int,Option[Int]),(String,List[String])](),List[Int]())){
 				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,translation,batchId)) =>
 					(instance_geometry \@ "url") match {
 						case FragURL(geomID) =>
+							tic
+							var i = 0
 							val (sVMHere, oSMHere, iHere) = geometryById.get(geomID).flatMap{geom => (geom \ "mesh").headOption}.collectFirst{
 								case mesh:Elem =>
+									tic
 									val byId = toIdDict(mesh \\ "_")
 									val tris = (mesh \ "triangles")
 									val triInputs = tris \ "input"
 									val iHere = (tris \ "p").text.trim.split(" ").map(_.toInt)
 									
+									tic
 									val oSMHere = triInputs.groupBy { case i:Elem => (i \@ "offset").toInt }.map {
 										case (offset, semsAtOfs) => (offset -> semsAtOfs.map{
 											case e:Elem => 
@@ -87,6 +101,8 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 												(srcId -> (sem, params.head \@ "type", params.map{_ \@ "name"}.toList))
 										}.toMap)
 									}
+									toc("grouping semantics by offset")
+									tic
 									val sVMHere = oSMHere.flatMap{
 										case (o, m) => m.map{
 											case (id, (sem, vType, _)) =>
@@ -98,12 +114,16 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 												((sem._1, o, sem._2) -> (byId(id) \ s"${vType}_array").text.trim.split(" ").map(numericize).toList)
 										}	
 									}
+									toc("extracting numerical arrays")
+									toc(s"parsing mesh $i semantic")
+									i += 1
 									(sVMHere, oSMHere, iHere)
 							}.getOrElse{throw new RuntimeException(s"Can't find a mesh element for geometry with id '$geomID'")}
 							
 							val nBatchIndex = batchIDs.length
 							val windowLen = oSMHere.size
 							
+							tic
 							val ofsSoFar = Array.tabulate(windowLen){
 								case ofs =>
 									val sVMStatus = oSMHere(ofs).head._2
@@ -112,15 +132,17 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 									val paramList = sVMStatus._3
 									semVertsMap.get(keyU).map{_.size}.getOrElse(0) / paramList.length
 							}
-							
+							toc("tabulating offsets")
+							tic
 							val oSMOut = oSMHere.flatMap{
 								case (o, m) => m.map {
 									case (id, ((semN, semS), vType, vNs)) =>
 										((semN, o, semS) -> (vType, vNs))
 								}
 							}
-							
-							(batchIDs :+ batchId, sVMHere.map{
+							toc("flattening offset map")
+							tic
+							val ret = (batchIDs :+ batchId, sVMHere.map{
 								case (s, l) =>
 									val lTrans = (s._1 == "VERTEX").withOption {
 										translation
@@ -141,13 +163,18 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 										idx + ofs
 								} :+ nBatchIndex
 							})
+							toc("concatenating output")
+							toc(geomID)
+							ret
 						case _ => throw new UnsupportedOperationException("We don't support non-fragment url's for geometry")
 					}
 			})
 	}
+	toc("allocating batched arrays")
 	
 	private def joinId(components:String*):String = components.mkString("-")
 	private def genArrayOfType(contents:Seq[_ <: AnyVal], strideNames:Seq[String], parentId:String, semantic:String, offset:Int, set:Option[Int], vType:String):(String,Elem) = {
+		tic
 		val littleS = semantic.toLowerCase match {
 			case "vertex" => "position"
 			case s@_ => s
@@ -168,11 +195,14 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 				</accessor>
 			</technique_common>
 		</source>
+		toc(s"generating array: $id")
 		(id, xmlOut)
 	}
 	
+	tic
 	private val newGeoms = batchedArrays.zipWithIndex.map{
 		case((matUrl, (batchIDs,semVertsDataMap, semVertsConfigMap, indices)), batchI) =>
+			tic
 			val geomId = s"batch$batchI"
 			val vertsId = joinId(geomId,"vertex")
 			val attributes = (semVertsDataMap.foldLeft(Map[String,Map[(Int,Option[Int]),(String,List[String],List[_ <: AnyVal])]]()){
@@ -209,9 +239,12 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 					</triangles>
 				</mesh>
 			</geometry>	
+			toc(geomId)
 			(matUrl -> (attributes.contains("TEXCOORD"),xmlOut))
 	}
+	toc("allocating geometries")
 	
+	tic
 	private val newNode = <node type="NODE">
 		<translate>0 0 0</translate>
 		{
@@ -233,6 +266,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 		 }
 		}
 	</node>
+	toc("assigning to node")
 	
 	override def sideChannel =	Map(classOf[BatchedGeometryRewriter] -> metaData)
 	override def transform(n:Node):Seq[Node] = {
