@@ -25,6 +25,8 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 	
 	tic
 	val effects = collada \ "library_effects" \ "effect"
+	toc(s"collected ${effects.size} candidate effects")
+	tic
 	val (uniqueEffects, replaceWith) = effects.foldLeft((Set[(String,Node)](),Map[String,String]())){
 		case ((uniqueEffects, replaceWith), nodeHere) =>
 			val effectId = nodeHere \@ "id"
@@ -37,8 +39,7 @@ class UniqueEffectsRewriter(collada:Node) extends PipelineRuleStage[Nothing] {
 				case (replaceId, _) => (uniqueEffects, replaceWith + (effectId -> replaceId)) 	
 			}
 	}
-	toc("effect replacements")
-	
+	toc(s"effect replacements: reduced ${effects.length} -> ${uniqueEffects.size}")	
 	tic
 	val materials = collada \ "library_materials" \ "material"
 	val (updatedMaterials, materialReplacements) = materials.foldLeft((Set[(String,Elem)](), Map[String,String]())){
