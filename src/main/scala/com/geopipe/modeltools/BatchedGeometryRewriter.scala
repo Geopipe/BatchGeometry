@@ -71,7 +71,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 	tic
 	private val batchedArrays = batchBuckets.map{
 		case(matUrl, geomToBatch) => 
-			(matUrl, geomToBatch.foldLeft((List[Int](),Map[(String,Int,Option[Int]),List[_ <: AnyVal]](),Map[(String,Int,Option[Int]),(String,List[String])](),List[Int]())){
+			(matUrl, geomToBatch.foldLeft((Vector[Int](),Map[(String,Int,Option[Int]),Vector[_ <: AnyVal]](),Map[(String,Int,Option[Int]),(String,List[String])](),Vector[Int]())){
 				case((batchIDs,semVertsMap, ofsSemMap, indices),(instance_geometry,translation,batchId)) =>
 					(instance_geometry \@ "url") match {
 						case FragURL(geomID) =>
@@ -110,7 +110,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 													case "int" => {s:String => s.toInt}
 													case "boolean" => {s:String => s.toBoolean}
 												}
-												((sem._1, o, sem._2) -> (byId(id) \ s"${vType}_array").text.trim.split(" ").map(numericize).toList)
+												((sem._1, o, sem._2) -> (byId(id) \ s"${vType}_array").text.trim.split(" ").map(numericize).toVector)
 										}	
 									}
 									toc("extracting numerical arrays")
@@ -154,7 +154,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 											l.asInstanceOf[List[Float]].grouped(translation.size).flatMap{
 												_.zip(t).map(p => p._1.toFloat + p._2)
 											}
-									}.getOrElse(l).toList
+									}.getOrElse(l).toVector
 									(s ->  semVertsMap.get(s).map{ _ ++ lTrans }.getOrElse(lTrans))
 							}, oSMOut, indices ++ iHere.grouped(windowLen).flatMap{
 								_.zip(ofsSoFar).map{
@@ -204,7 +204,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 			tic
 			val geomId = s"batch$batchI"
 			val vertsId = joinId(geomId,"vertex")
-			val attributes = (semVertsDataMap.foldLeft(Map[String,Map[(Int,Option[Int]),(String,List[String],List[_ <: AnyVal])]]()){
+			val attributes = (semVertsDataMap.foldLeft(Map[String,Map[(Int,Option[Int]),(String,List[String],Vector[_ <: AnyVal])]]()){
 				case (attrSoFar, (sem@(semN, ofs, semS), data)) =>
 					val (vType, vKeys) = semVertsConfigMap(sem)
 					attrSoFar + (semN -> (attrSoFar.get(semN).getOrElse(Map()) + ((ofs, semS) -> (vType, vKeys, data))))
