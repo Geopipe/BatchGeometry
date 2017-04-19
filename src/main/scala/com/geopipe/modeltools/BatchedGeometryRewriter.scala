@@ -151,7 +151,7 @@ class BatchedGeometryRewriter(collada:Node) extends PipelineRuleStage[JValue] {
 											// And we need to do more metaprogramming to fix that
 											// For now, the assert should do
 											assert(oSMOut(s)._1 == "float")
-											l.asInstanceOf[List[Float]].grouped(translation.size).flatMap{
+											l.asInstanceOf[Vector[Float]].grouped(translation.size).flatMap{
 												_.zip(t).map(p => p._1.toFloat + p._2)
 											}
 									}.getOrElse(l).toVector
